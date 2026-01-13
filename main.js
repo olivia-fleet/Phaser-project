@@ -28,18 +28,32 @@ const config = {
 new Phaser.Game(config);
 
 function create() {
-  // Player (a circle)
-  player = this.add.circle(WIDTH / 2, HEIGHT / 2, playerRadius, PLAYER_COLOR);
-
-  // Click target starts at player
-  target = new Phaser.Math.Vector2(player.x, player.y);
-
-  // Obstacles (3 boxes)
+  // Obstacles (3 boxes) — create them first so we can find a safe start position
   obstacles = [
     new Obstacle(this, WIDTH / 2, HEIGHT / 2, 180, 120, OBSTACLE_COLOR), // middle
     new Obstacle(this, 105, 80, 90, 40, OBSTACLE_COLOR),                 // extra
     new Obstacle(this, 410, 285, 100, 50, OBSTACLE_COLOR),               // extra
   ];
+
+  // Player (a circle) — find a non-blocking starting position
+  function findSafeStart() {
+    const margin = playerRadius + 5;
+    const step = 10;
+    for (let yy = margin; yy <= HEIGHT - margin; yy += step) {
+      for (let xx = margin; xx <= WIDTH - margin; xx += step) {
+        const blocked = obstacles.some(obs => obs.blocksCircle(xx, yy, playerRadius));
+        if (!blocked) return { x: xx, y: yy };
+      }
+    }
+    // fallback to top-left corner if no free spot found
+    return { x: margin, y: margin };
+  }
+
+  const start = findSafeStart();
+  player = this.add.circle(start.x, start.y, playerRadius, PLAYER_COLOR);
+
+  // Click target starts at player
+  target = new Phaser.Math.Vector2(player.x, player.y);
 
   // Key (triangle)
   key = new Key(this, 430, 80, 12, KEY_COLOR);
