@@ -1,64 +1,68 @@
 // main.js
+import { Obstacle } from "./obstacle.js";
+import { Key } from "./key.js";
+import { Door } from "./door.js";
+import { Inventory } from "./inventory.js";
 
 const WIDTH = 500;
 const HEIGHT = 350;
 
-const BG_COLOR = 0x50a0c8;       // background
-const OBSTACLE_COLOR = 0xf0dc78; // boxes
-const PLAYER_COLOR = 0xc85050;   // player circle
-const KEY_COLOR = 0x3cdc5a;      // key triangle
+const BG_COLOR = 0x50a0c8;
+
+const playerRadius = 15;
+const playerSpeed = 220;
 
 let player;
 let target;
 
-const playerRadius = 15;
-const playerSpeed = 220; // pixels per second
-
 let obstacles = [];
 let key;
+let door;
+let inventory;
 
 const config = {
   type: Phaser.AUTO,
   width: WIDTH,
   height: HEIGHT,
   backgroundColor: BG_COLOR,
-  scene: { create, update }
+  scene: { preload, create, update }
 };
 
 new Phaser.Game(config);
 
+function preload() {
+  // Load images (give them names we can use later)
+  this.load.image("player", "assets/player.png");
+  this.load.image("key", "assets/key.png");
+  this.load.image("obstacle", "assets/obstacle.png");
+  this.load.image("door", "assets/door.png");
+}
+
 function create() {
-  // Obstacles (3 boxes) — create them first so we can find a safe start position
-  obstacles = [
-    new Obstacle(this, WIDTH / 2, HEIGHT / 2, 180, 120, OBSTACLE_COLOR), // middle
-    new Obstacle(this, 105, 80, 90, 40, OBSTACLE_COLOR),                 // extra
-    new Obstacle(this, 410, 285, 100, 50, OBSTACLE_COLOR),               // extra
-  ];
-
-  // Player (a circle) — find a non-blocking starting position
-  function findSafeStart() {
-    const margin = playerRadius + 5;
-    const step = 10;
-    for (let yy = margin; yy <= HEIGHT - margin; yy += step) {
-      for (let xx = margin; xx <= WIDTH - margin; xx += step) {
-        const blocked = obstacles.some(obs => obs.blocksCircle(xx, yy, playerRadius));
-        if (!blocked) return { x: xx, y: yy };
-      }
-    }
-    // fallback to top-left corner if no free spot found
-    return { x: margin, y: margin };
-  }
-
-  const start = findSafeStart();
-  player = this.add.circle(start.x, start.y, playerRadius, PLAYER_COLOR);
+  // Player image (we use an image now!)
+  player = this.add.image(WIDTH / 2, HEIGHT / 2, "player").setScale(0.6);
 
   // Click target starts at player
   target = new Phaser.Math.Vector2(player.x, player.y);
 
-  // Key (triangle)
-  key = new Key(this, 430, 80, 12, KEY_COLOR);
+  // Obstacles (3 boxes)
+  obstacles = [
+    new Obstacle(this, WIDTH / 2, HEIGHT / 2, 180, 120, "obstacle"),
+    new Obstacle(this, 105, 80, 90, 40, "obstacle"),
+    new Obstacle(this, 410, 285, 100, 50, "obstacle"),
+  ];
 
-  // When you click, change the target
+  // Key image
+  key = new Key(this, 430, 80, "key");
+
+  // Door (locked at start)
+  door = new Door(this, 50, 245, 60, 90, "door");
+
+  // Inventory
+  inventory = new Inventory(this);
+  inventory.setIcon("key", "key");
+
+  // Click to move
   this.input.on("pointerdown", (pointer) => {
     target.x = pointer.x;
     target.y = pointer.y;
@@ -75,12 +79,9 @@ function update(time, delta) {
 
   if (distance > 1) {
     const step = playerSpeed * dt;
-
-    // direction (normalized)
     const dirX = dx / distance;
     const dirY = dy / distance;
 
-    // Try the next position
     let nextX = player.x;
     let nextY = player.y;
 
@@ -88,33 +89,40 @@ function update(time, delta) {
       nextX = target.x;
       nextY = target.y;
     } else {
-      nextX = player.x + dirX * step;
-      nextY = player.y + dirY * step;
+      nextX += dirX * step;
+      nextY += dirY * step;
     }
 
-    // Ask obstacles if they block the player
-    const blocked = obstacles.some(obs => obs.blocksCircle(nextX, nextY, playerRadius));
+    const blockedByObstacle = obstacles.some(o => o.blocksCircle(nextX, nextY, playerRadius));
+    const blockedByDoor = door.blocksCircle(nextX, nextY, playerRadius);
 
-    if (!blocked) {
+    if (!blockedByObstacle && !blockedByDoor) {
       player.x = nextX;
       player.y = nextY;
     } else {
-      // If blocked, try sliding around:
-      // Try X-only movement, then Y-only movement
-      const slideXBlocked = obstacles.some(obs => obs.blocksCircle(player.x + dirX * step, player.y, playerRadius));
-      const slideYBlocked = obstacles.some(obs => obs.blocksCircle(player.x, player.y + dirY * step, playerRadius));
+      // Slide around
+      const slideXBlocked =
+        obstacles.some(o => o.blocksCircle(player.x + dirX * step, player.y, playerRadius)) ||
+        door.blocksCircle(player.x + dirX * step, player.y, playerRadius);
+
+      const slideYBlocked =
+        obstacles.some(o => o.blocksCircle(player.x, player.y + dirY * step, playerRadius)) ||
+        door.blocksCircle(player.x, player.y + dirY * step, playerRadius);
 
       if (!slideXBlocked) {
-        player.x = player.x + dirX * step;
+        player.x += dirX * step;
       } else if (!slideYBlocked) {
-        player.y = player.y + dirY * step;
+        player.y += dirY * step;
       }
-      // else: stuck this frame
     }
   }
 
   // --- Pick up the key ---
   if (!key.collected && key.touchesCircle(player.x, player.y, playerRadius)) {
     key.collect();
+    inventory.addItem("key");
   }
+
+  // --- Try opening the door ---
+  door.tryOpen(player.x, player.y, playerRadius, inventory.hasItem("key"));
 }

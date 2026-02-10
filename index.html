@@ -9,13 +9,11 @@
     </style>
   </head>
   <body>
+    <!-- Phaser library -->
     <script src="lib/phaser.min.js"></script>
 
-    <!-- NEW: load classes before main.js -->
-    <script src="obstacle.js"></script>
-    <script src="key.js"></script>
-
-    <script src="main.js"></script>
+    <!-- Main game file (module so it can import other files) -->
+    <script type="module" src="main.js"></script>
   </body>
 </html>
 
